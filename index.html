@@ -209,6 +209,32 @@
     .orb, .radar{ animation:none; }
   }
   @media (max-width:600px){ .wrap{padding:18px 16px 40px;} .brand h1{font-size:20px;} .clockbox .time{font-size:22px;} }
+
+  /* ===== ASISTENTE DE VOZ ===== */
+  .mic-btn{
+    position:fixed; bottom:24px; left:24px; z-index:90;
+    width:56px; height:56px; border-radius:50%; border:1px solid var(--gold);
+    background:var(--panel); color:var(--gold); font-size:22px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    box-shadow:0 4px 18px rgba(0,0,0,.4); transition:transform .15s ease, background .2s ease;
+  }
+  .mic-btn:hover{ transform:scale(1.06); }
+  .mic-btn.listening{ background:var(--brick); border-color:var(--brick); color:#fff; animation:micPulse 1.3s ease-in-out infinite; }
+  @keyframes micPulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(168,67,58,.5);} 50%{ box-shadow:0 0 0 14px rgba(168,67,58,0);} }
+
+  .assistant-panel{
+    position:fixed; bottom:92px; left:24px; z-index:90; width:min(340px, calc(100vw - 48px));
+    background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--gold);
+    border-radius:var(--radius); padding:16px; display:none; box-shadow:0 8px 30px rgba(0,0,0,.45);
+    animation:modalPop .2s ease both;
+  }
+  .assistant-panel.open{ display:block; }
+  .assistant-status{ font-family:'JetBrains Mono',monospace; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--gold-dim); margin-bottom:8px; display:flex; align-items:center; gap:7px; }
+  .assistant-status .dot{ width:6px; height:6px; border-radius:50%; background:var(--gold-dim); }
+  .assistant-status.busy .dot{ background:var(--amber); animation:pulseDot 1s ease-in-out infinite; }
+  .assistant-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
+  .assistant-text.question{ color:var(--text-dim); font-style:italic; margin-bottom:8px; }
+  .assistant-hint{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--text-faint); margin-top:10px; letter-spacing:.5px; }
 </style>
 </head>
 <body>
@@ -228,6 +254,10 @@
       <div class="date" id="clockDate">-- --- ----</div>
     </div>
   </header>
+
+  <div class="toolbar-edit" style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+    <a href="inventario.html" style="font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--gold-dim); text-decoration:none; letter-spacing:1px; text-transform:uppercase; border:1px solid var(--line); padding:8px 14px; border-radius:var(--radius);">📦 Inventario Draguz →</a>
+  </div>
 
   <div class="stats">
     <div class="stat">
@@ -271,6 +301,14 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<button class="mic-btn" id="micBtn" title="Pregúntale a tu panel">🎙️</button>
+<div class="assistant-panel" id="assistantPanel">
+  <div class="assistant-status" id="assistantStatus"><span class="dot"></span>Listo para escuchar</div>
+  <div class="assistant-text question" id="assistantQuestion" style="display:none;"></div>
+  <div class="assistant-text" id="assistantAnswer"></div>
+  <div class="assistant-hint">Funciona mejor en Chrome. Toca el micrófono y pregunta.</div>
+</div>
 
 <!-- Modal: tarea -->
 <div class="overlay" id="taskOverlay">
@@ -776,6 +814,102 @@ document.getElementById('kioskToggle').addEventListener('click', (e)=>{
 
 tickClock();
 setInterval(tickClock, 1000);
+
+/* ===== ASISTENTE DE VOZ (IA) ===== */
+// Pega aquí la URL de tu función en Vercel una vez desplegada, ej:
+// 'https://tareas-paulo-api.vercel.app/api/ask'
+const AI_ENDPOINT = 'https://TU-PROYECTO-api.vercel.app/api/ask';
+
+const micBtn = document.getElementById('micBtn');
+const assistantPanel = document.getElementById('assistantPanel');
+const assistantStatus = document.getElementById('assistantStatus');
+const assistantQuestion = document.getElementById('assistantQuestion');
+const assistantAnswer = document.getElementById('assistantAnswer');
+
+function setAssistantStatus(text, busy){
+  assistantStatus.innerHTML = `<span class="dot"></span>${text}`;
+  assistantStatus.classList.toggle('busy', !!busy);
+}
+
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+if(SpeechRecognitionAPI){
+  recognition = new SpeechRecognitionAPI();
+  recognition.lang = 'es-MX';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = ()=>{
+    micBtn.classList.add('listening');
+    assistantPanel.classList.add('open');
+    assistantQuestion.style.display = 'none';
+    setAssistantStatus('Escuchando...', true);
+  };
+
+  recognition.onerror = (e)=>{
+    micBtn.classList.remove('listening');
+    setAssistantStatus('No te escuché bien, intenta otra vez', false);
+    assistantAnswer.textContent = '';
+  };
+
+  recognition.onresult = async (e)=>{
+    const transcript = e.results[0][0].transcript;
+    assistantQuestion.textContent = '"' + transcript + '"';
+    assistantQuestion.style.display = 'block';
+    await askAssistant(transcript);
+  };
+
+  recognition.onend = ()=>{ micBtn.classList.remove('listening'); };
+
+  micBtn.addEventListener('click', ()=>{
+    if(AI_ENDPOINT.includes('TU-PROYECTO')){
+      assistantPanel.classList.add('open');
+      setAssistantStatus('Falta configurar el asistente', false);
+      assistantAnswer.textContent = 'Todavía no se ha conectado la IA. Reemplaza AI_ENDPOINT en el código con la URL de tu función en Vercel.';
+      return;
+    }
+    try{ recognition.start(); }catch(e){ /* ya está escuchando */ }
+  });
+} else {
+  micBtn.addEventListener('click', ()=>{
+    assistantPanel.classList.add('open');
+    setAssistantStatus('No disponible en este navegador', false);
+    assistantAnswer.textContent = 'El reconocimiento de voz no funciona en este navegador. Prueba con Chrome.';
+  });
+}
+
+async function askAssistant(question){
+  setAssistantStatus('Pensando...', true);
+  assistantAnswer.textContent = '';
+  try{
+    const res = await fetch(AI_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, boardData: data }),
+    });
+    const json = await res.json();
+    if(!res.ok || json.error){
+      setAssistantStatus('Error', false);
+      assistantAnswer.textContent = json.error || 'No se pudo consultar la IA.';
+      return;
+    }
+    setAssistantStatus('Listo para escuchar', false);
+    assistantAnswer.textContent = json.answer;
+    speak(json.answer);
+  }catch(e){
+    setAssistantStatus('Error de conexión', false);
+    assistantAnswer.textContent = 'No se pudo conectar con el asistente. Revisa tu internet o la URL configurada.';
+  }
+}
+
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'es-MX';
+  utter.rate = 1.02;
+  window.speechSynthesis.speak(utter);
+}
 </script>
 </body>
 </html>
