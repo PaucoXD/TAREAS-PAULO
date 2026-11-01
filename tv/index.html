@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Draguz TV</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- Vista previa en navegador del Panel de la tele (la tele usa la app instalada, que carga estos mismos archivos). -->
+<div id="stage"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>window.PANEL_REMOTE = location.href.replace(/[^\/]*$/, '');</script>
+<script src="app.js"></script>
+</body>
+</html>
